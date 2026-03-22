@@ -210,6 +210,17 @@ def _add_running_header(doc: Document, title: str,
         pPr.append(pBdr)
 
 
+def _table_no_split(table):
+    """Prevent table rows from splitting across pages — DOCX XML property."""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    for row in table.rows:
+        trPr = row._tr.get_or_add_trPr()
+        cantSplit = OxmlElement("w:cantSplit")
+        cantSplit.set(qn("w:val"), "true")
+        trPr.append(cantSplit)
+
+
 def _table_set_borders(table):
     """Apply thin black borders to all table cells."""
     tbl  = table._tbl
@@ -256,6 +267,7 @@ def _add_professional_table(doc: Document, headers: List[str],
     table = doc.add_table(rows=n_rows, cols=n_cols)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     _table_set_borders(table)
+    _table_no_split(table)   # Never split rows across pages
 
     # Header row — dark blue shading, white bold text
     hdr_row = table.rows[0]

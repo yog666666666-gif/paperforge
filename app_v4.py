@@ -15,9 +15,26 @@ import zipfile
 
 # ── Local modules ──────────────────────────────────────────
 from model_router    import call_model, call_prep, call_writer, call_audit, WRITER_MODELS
+try:
+    from domain_data_router import get_domain_data_sources, render_data_sources_ui
+    DATA_ROUTER_AVAILABLE = True
+except ImportError:
+    DATA_ROUTER_AVAILABLE = False
 from citation_engine import (fetch_citation_bank, enforce_citation_discipline,
                               verify_bank_phase_c, format_citation, bank_to_prompt_text)
 from data_engine     import generate_narrative_targets, reverse_engineer_dataset, verify_statistics
+try:
+    from domain_data_engine import (
+        fetch_domain_data, format_data_for_prompt,
+        select_apis_for_domain, DataFetchResult, TODAY_STR, CURRENT_YEAR)
+    LIVE_DATA_AVAILABLE = True
+except ImportError:
+    LIVE_DATA_AVAILABLE = False
+try:
+    from domain_data_engine import render_data_availability_check, fetch_domain_data
+    DOMAIN_DATA_AVAILABLE = True
+except ImportError:
+    DOMAIN_DATA_AVAILABLE = False
 from audit_pipeline  import audit_and_clean
 
 from credit_engine   import get_engine, CREDIT_COSTS
@@ -45,7 +62,44 @@ try:
     FORMATTER_AVAILABLE = True
 except ImportError:
     FORMATTER_AVAILABLE = False
-    STATISTICIAN_QUOTES = ['"Without data, you are just another person with an opinion." — W. Edwards Deming']
+    STATISTICIAN_QUOTES = [
+    'Without data, you are just another person with an opinion. — W. Edwards Deming',
+    'All models are wrong, but some are useful. — George Box',
+    'Statistics is the grammar of science. — Karl Pearson',
+    'Far better an approximate answer to the right question. — John Tukey',
+    'In God we trust; all others must bring data. — W. Edwards Deming',
+    'Torture the data long enough and it will confess to anything. — Ronald Coase',
+    'Statistical thinking will one day be necessary for efficient citizenship. — H.G. Wells',
+    'All knowledge is, in final analysis, history. All sciences are, in the abstract, mathematics. — C.R. Rao',
+    'Probability is the language of uncertainty. — C.R. Rao',
+    'The future is uncertain, but statistics gives us the tools to navigate it. — C.R. Rao',
+    'Statistics must have a purpose. — P.C. Mahalanobis',
+    'Statistics is a tool for social change. — P.C. Mahalanobis',
+    'Measure what is measurable, and make measurable what is not so. — Galileo Galilei',
+    'If you cannot explain it simply, you do not understand it well enough. — Albert Einstein',
+    'The first principle is that you must not fool yourself — and you are the easiest person to fool. — Richard Feynman',
+    'The numbers have no way of speaking for themselves. We speak for them. — Nate Silver',
+    'An approximate answer to the right problem is worth a good deal more than an exact answer to an approximate problem. — John Tukey',
+    'Extraordinary claims require extraordinary evidence. — Carl Sagan',
+    'Data is the new oil, but only if you have the engine to refine it. — C.R. Rao',
+    'One accurate measurement is worth a thousand expert opinions. — Grace Hopper',
+    'The greatest enemy of knowledge is not ignorance; it is the illusion of knowledge. — Stephen Hawking',
+    'If you cannot measure it, you cannot improve it. — Peter Drucker',
+    'Numbers have life; they are not just symbols on paper. — Shakuntala Devi',
+    'To me, numbers are living things. — Srinivasa Ramanujan',
+    'Ask the right questions, and nature will open the doors to her secrets. — C.V. Raman',
+    'Dream, dream, dream. Dreams transform into thoughts and thoughts result in action. — A.P.J. Abdul Kalam',
+    'Science is a place where what you find in any way you find it is accepted. — S. Chandrasekhar',
+    'Innovation is about doing more with less for more people. — R.A. Mashelkar',
+    'Do not cross a river if it is on average four feet deep. — Nassim Taleb',
+    'Clutter and confusion are failures of design, not attributes of information. — Edward Tufte',
+    'The goal is to turn data into information, and information into insight. — Carly Fiorina',
+    'A mathematician is a device for turning coffee into theorems. — Paul Erdos',
+    'We can only see a short distance ahead, but we can see plenty there that needs to be done. — Alan Turing',
+    'Running Professor Wagh algorithm. The master at work.',
+    'Building something that did not exist this morning.',
+    'Every section written is a paragraph closer to submission.',
+]
     PROGRESS_MESSAGES = ["Running Professor Wagh's algorithm. The master at work..."]
 
 # ══════════════════════════════════════════════════════════
@@ -100,6 +154,7 @@ DEFAULTS = {
     "domain_analysis": {},
     "template_key": "Generic_IMRaD",
     "citation_bank": [],
+    "data_sources": {},
     "objectives": [],
     "hypotheses": [],
     "structure": [],
@@ -338,7 +393,16 @@ CONFERENCE CONSTRAINTS:
 
         pct = int(10 + 80 * idx / total_sections)
         progress_bar.progress(pct)
-        progress_msg.markdown(f"⚙️ Writing **{sec_name}** ({sec_words} words)…")
+        import random as _rnd
+        _q = _rnd.choice(STATISTICIAN_QUOTES)
+        progress_msg.markdown(
+            f'<div style="display:flex;align-items:center;gap:1rem">'
+            f'<span style="font-size:13px;color:#5D4037;font-weight:600">'
+            f'✏️ Writing <strong>{sec_name}</strong> ({sec_words} words) — {pct}% complete</span>'
+            f'</div>'
+            f'<div style="font-size:12px;font-style:italic;color:#8D6E63;margin-top:4px">'
+            f'\U0001f4ac {_q}</div>',
+            unsafe_allow_html=True)
 
         # ── running context: last 400 words of paper so far ──
         running_tail = ""
@@ -899,6 +963,36 @@ elif st.session_state.step == 3:
                 st.rerun()
     st.markdown("---")
 
+    # ── Primary Data Sources — Sonnet-powered, topic-specific ──────────
+    if DATA_ROUTER_AVAILABLE:
+        st.markdown("---")
+        st.markdown("### 🗄️ Recommended Primary Data Sources")
+        st.caption(
+            "Sonnet identified these for your specific topic and geography. "
+            "Download the actual data and upload it as reference material.")
+        if "data_sources" not in st.session_state:
+            st.session_state.data_sources = {}
+        if not st.session_state.data_sources:
+            if st.button("🔍 Find Primary Data Sources",
+                         key="find_data_sources", use_container_width=True):
+                with st.spinner("Identifying most relevant data sources..."):
+                    _da = st.session_state.domain_analysis
+                    _result = get_domain_data_sources(
+                        topic=st.session_state.topic,
+                        domain=_da.get("detected_domain","") if isinstance(_da,dict) else "",
+                        paper_type=st.session_state.paper_type,
+                        objectives=st.session_state.objectives,
+                        hypotheses=st.session_state.hypotheses,
+                        call_fn=claude_call,
+                    )
+                    st.session_state.data_sources = _result
+                    st.rerun()
+        else:
+            render_data_sources_ui(st.session_state.data_sources, st)
+            if st.button("🔄 Refresh Sources", key="refresh_data_sources"):
+                st.session_state.data_sources = {}
+                st.rerun()
+
     c1,c2 = st.columns(2)
     with c1:
         if st.button("◀ Back"): st.session_state.step=2; st.rerun()
@@ -1041,7 +1135,21 @@ Return ONLY valid JSON array. No markdown fences."""
 
     if st.session_state.structure:
         total = sum(s.get("word_allocation",0) for s in st.session_state.structure)
-        st.markdown(f"**Total: `{total:,}` / `{st.session_state.word_limit:,}` words**")
+        tier_costs = {"Basic":104,"Medium":160,"Advanced":240,"Premium":400,"Ultra":600}
+        paper_credits = tier_costs.get(st.session_state.tier, 104)
+        paper_inr = paper_credits * 5
+        pct = total / max(st.session_state.word_limit, 1)
+        tot_color = "#2E7D32" if 0.95 <= pct <= 1.10 else ("#E65100" if pct > 1.10 else "#B71C1C")
+        _col1, _col2 = st.columns(2)
+        _col1.markdown(
+            f'<div style="font-size:15px;font-weight:600">Total: '
+            f'<span style="color:{tot_color}">{total:,}</span> / '
+            f'<span style="color:#5D4037">{st.session_state.word_limit:,}</span> words</div>',
+            unsafe_allow_html=True)
+        _col2.markdown(
+            f'<div style="font-size:13px;color:#5D4037;padding-top:4px">'
+            f'\U0001f4b3 Estimated cost: <strong>-{paper_credits} credits</strong> (₹{paper_inr})</div>',
+            unsafe_allow_html=True)
 
         edited = []
         for i, sec in enumerate(st.session_state.structure):
@@ -1263,10 +1371,218 @@ elif st.session_state.step == 7:
 # STEP 8 — REVERSE-ENGINEER DATA
 # ══════════════════════════════════════════════════════════
 elif st.session_state.step == 8:
-    st.markdown("## Step 8 — Generating Dataset")
+    st.markdown("## Step 8 — Dataset & Demographics")
 
     narrative_key = st.session_state.selected_narrative
     narrative = st.session_state.narratives.get(narrative_key, {})
+
+    # ── AI-suggested demographics ──────────────────────────────────────────
+    if "suggested_demographics" not in st.session_state:
+        st.session_state.suggested_demographics = []
+    if "user_demographics" not in st.session_state:
+        st.session_state.user_demographics = []
+
+    da = st.session_state.domain_analysis
+    hyp_texts = [h.get("alternate","") for h in st.session_state.hypotheses]
+
+    if not st.session_state.suggested_demographics:
+        with st.spinner("Suggesting demographic variables for your study..."):
+            demo_prompt = (
+                f"Study type: {st.session_state.paper_type}\n"
+                f"Domain: {da.get('detected_domain','')}\n"
+                f"Topic: {st.session_state.topic}\n"
+                f"Hypotheses: {'; '.join(hyp_texts[:3])}\n\n"
+                f"Suggest 5-7 demographic variables that would produce "
+                f"statistically interesting cross-tabulations for this study. "
+                f"Think about variables that would reveal surprising group "
+                f"differences. Return ONLY valid JSON:\n"
+                f'{{"demographics": ['
+                f'{{"variable": "Age Group", "type": "categorical", '
+                f'"options": ["18-25","26-35","36-45","46+"], '
+                f'"rationale": "age differences in outcome"}}'
+                f']}}'
+            )
+            try:
+                raw_demo = claude_call(MASTER_SYSTEM, demo_prompt, 1000, cheap=True)
+                raw_demo = __import__("re").sub(r"```json|```", "", raw_demo).strip()
+                demo_data = json.loads(raw_demo)
+                st.session_state.suggested_demographics = demo_data.get("demographics", [])
+                # Default: all selected
+                st.session_state.user_demographics = [
+                    d["variable"] for d in st.session_state.suggested_demographics
+                ]
+            except Exception:
+                # Fallback demographics
+                st.session_state.suggested_demographics = [
+                    {"variable": "Age Group", "type": "categorical",
+                     "options": ["18-25","26-35","36-45","46+"],
+                     "rationale": "Standard demographic"},
+                    {"variable": "Gender", "type": "categorical",
+                     "options": ["Male","Female","Other"],
+                     "rationale": "Gender-based analysis"},
+                    {"variable": "Education Level", "type": "categorical",
+                     "options": ["Graduate","Post-Graduate","PhD"],
+                     "rationale": "Education differences"},
+                ]
+                st.session_state.user_demographics = [
+                    d["variable"] for d in st.session_state.suggested_demographics
+                ]
+
+    # Demographic editor
+    with st.expander("📊 Demographic Variables (edit before generating)", expanded=True):
+        st.caption(
+            "AI selected these based on your study type. "
+            "Tick/untick to include. Each adds one column to the CSV. Zero extra cost.")
+        updated_demo_selection = []
+        demo_cols = st.columns(2)
+        for di, demo in enumerate(st.session_state.suggested_demographics):
+            col = demo_cols[di % 2]
+            checked = col.checkbox(
+                f"**{demo['variable']}** — {demo.get('rationale','')[:50]}",
+                value=demo["variable"] in st.session_state.user_demographics,
+                key=f"demo_chk_{di}")
+            if checked:
+                updated_demo_selection.append(demo["variable"])
+        st.session_state.user_demographics = updated_demo_selection
+
+        # Custom demographic
+        new_demo = st.text_input(
+            "Add custom demographic variable:",
+            placeholder="e.g. Tobacco type, SLD diagnosis, Urban/Rural",
+            key="custom_demo_input")
+        if st.button("+ Add", key="add_custom_demo") and new_demo.strip():
+            st.session_state.suggested_demographics.append({
+                "variable": new_demo.strip(),
+                "type": "categorical",
+                "options": ["Category A", "Category B", "Category C"],
+                "rationale": "User-specified"
+            })
+            st.session_state.user_demographics.append(new_demo.strip())
+            st.rerun()
+
+    # ── Zero Hallucination Data Check ────────────────────────────────────────
+    if DOMAIN_DATA_AVAILABLE and not st.session_state.get("data_check_done"):
+        da_local = st.session_state.domain_analysis
+        # Parse year range from a la carte instructions
+        import re as _re
+        _instr = st.session_state.get("user_overrides","") or ""
+        _yr_matches = _re.findall(r"20[0-9]{2}", _instr)
+        _yr_start = int(min(_yr_matches)) if _yr_matches else 2015
+        _yr_end   = int(max(_yr_matches)) if _yr_matches else 2024
+
+        with st.spinner("Checking real data availability from 100 sources..."):
+            _data_result, _can_proceed = render_data_availability_check(
+                topic      = st.session_state.topic,
+                domain     = da_local.get("detected_domain",""),
+                paper_type = st.session_state.paper_type,
+                year_start = _yr_start,
+                year_end   = _yr_end,
+                call_sonnet_fn = lambda sys, usr, tok: claude_call(sys, usr, tok, cheap=True),
+                credits_engine = credits,
+                user_id    = st.session_state.user_id,
+                paper_id   = st.session_state.paper_id,
+                cost       = CREDIT_COSTS.get(st.session_state.tier, 104),
+            )
+        if _can_proceed:
+            st.session_state["data_check_done"] = True
+            st.session_state["real_data_result"] = {
+                "sources": [s["name"] for s in _data_result.sources_hit],
+                "points":  _data_result.data_points[:20],
+            }
+        else:
+            st.stop()  # credits refunded, alternatives shown — user must choose
+
+    # ── Live Data Fetch (Zero Hallucination Policy) ──────────────────────
+    if LIVE_DATA_AVAILABLE and "live_data_result" not in st.session_state:
+        da_domain = st.session_state.domain_analysis.get("detected_domain","")
+        # Parse year range from a la carte instructions
+        _ystart, _yend = 2019, 2024
+        _alacarte = st.session_state.get("user_overrides","") or ""
+        import re as _re
+        _years = _re.findall(r"20[0-9]{2}", _alacarte)
+        if len(_years) >= 2:
+            _ystart, _yend = int(min(_years)), int(max(_years))
+        elif len(_years) == 1:
+            _yend = int(_years[0])
+
+        with st.spinner(f"Fetching real data from verified sources for: {da_domain}..."):
+            _fetch_log = []
+            _dr = fetch_domain_data(
+                domain=da_domain,
+                topic=st.session_state.topic,
+                requested_start=_ystart,
+                requested_end=_yend,
+                n_apis=8,
+                log_fn=_fetch_log.append,
+            )
+            st.session_state["live_data_result"] = _dr
+
+        # Show year range warnings
+        if _dr.year_warnings:
+            for _warn in _dr.year_warnings:
+                st.warning(f"📅 {_warn}")
+            st.info(f"Today is **{TODAY_STR}**. Would you like to proceed with available data?")
+            _col_y, _col_n = st.columns(2)
+            if _col_y.button("Yes, proceed with available data", use_container_width=True):
+                pass  # continue
+            if _col_n.button("No, suggest alternative topics", use_container_width=True):
+                st.session_state["show_alt_titles"] = True
+                st.rerun()
+
+        if st.session_state.get("show_alt_titles") and _dr.suggested_titles:
+            credits.refund(st.session_state.user_id,
+                           CREDIT_COSTS.get(st.session_state.tier, 104),
+                           st.session_state.paper_id)
+            st.markdown('<div class="ok-box">💳 Credits refunded. No data — no charge.</div>',
+                        unsafe_allow_html=True)
+            st.markdown("### 📚 These topics have verified data available:")
+            for _alt in _dr.suggested_titles:
+                st.markdown(
+                    f'<div style="background:#FFF8E7;border-left:4px solid #8D6E63;'
+                    f'padding:0.8rem 1rem;margin:0.4rem 0;border-radius:3px">'
+                    f'<strong>{_alt["title"]}</strong><br>'
+                    f'<span style="font-size:12px;color:#5D4037">{_alt["reason"]}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+            if st.button("Use one of these topics", use_container_width=True):
+                st.session_state.step = 1
+                for key in ["live_data_result","show_alt_titles","synthetic_df",
+                            "citation_bank","objectives","hypotheses","structure"]:
+                    st.session_state.pop(key, None)
+                st.rerun()
+            st.stop()
+
+        # Show data summary
+        if _dr.success and _dr.verified_stats:
+            st.markdown(f'<div class="ok-box">✅ {_dr.message}</div>', unsafe_allow_html=True)
+            with st.expander(f"📊 {len(_dr.verified_stats)} verified statistics found", expanded=False):
+                for _vs in _dr.verified_stats:
+                    st.markdown(
+                        f"• **{_vs['label']}**: `{_vs['value']}` ({_vs['year']}) "
+                        f"— *{_vs['source']}*")
+        elif not _dr.success:
+            # ALL APIs returned null — politely stop
+            credits.refund(st.session_state.user_id,
+                           CREDIT_COSTS.get(st.session_state.tier, 104),
+                           st.session_state.paper_id)
+            st.markdown(
+                '<div class="warn-box">⚠️ <strong>No verified data found.</strong><br>'
+                'We searched every available database for your domain and topic. '
+                'Nothing came back. Your credits have been fully refunded.<br><br>'
+                'This is our Zero Hallucination Policy in action — '
+                'we would rather stop than invent statistics.</div>',
+                unsafe_allow_html=True)
+            if _dr.suggested_titles:
+                st.markdown("### These topics have verified live data:")
+                for _alt in _dr.suggested_titles:
+                    st.markdown(f"**{_alt['title']}** — {_alt['reason']}")
+            if st.button("Start fresh with a different topic"):
+                for key in ["live_data_result","synthetic_df","citation_bank",
+                            "objectives","hypotheses","structure","show_alt_titles"]:
+                    st.session_state.pop(key, None)
+                st.session_state.step = 1
+                st.rerun()
+            st.stop()
 
     if st.session_state.synthetic_df is None:
         with st.spinner("Reverse-engineering dataset to match target statistics..."):
@@ -1276,7 +1592,9 @@ elif st.session_state.step == 8:
                 narrative["n"] = _n
                 df = reverse_engineer_dataset(
                     narrative,
-                    constructs=st.session_state.get("constructs") or None
+                    constructs=st.session_state.get("constructs") or None,
+                    extra_demographics=st.session_state.get("suggested_demographics", []),
+                    selected_demographics=st.session_state.get("user_demographics", []),
                 )
                 verification = verify_statistics(df, narrative)
                 st.session_state.synthetic_df = df
@@ -1341,6 +1659,14 @@ elif st.session_state.step == 9:
             cites_text   = bank_to_prompt_text(st.session_state.citation_bank[:12],
                                                st.session_state.citation_style)
             stat_results = _build_stats_text(v, narrative)
+            # Inject verified live data into prompt
+            _live_dr = st.session_state.get("live_data_result")
+            _live_stats_text = ""
+            if _live_dr and _live_dr.success:
+                try:
+                    _live_stats_text = format_data_for_prompt(_live_dr)
+                except Exception:
+                    _live_stats_text = ""
 
             try:
                 # ── SECTIONAL GENERATION (fixes truncation at ~1,400w) ──────
@@ -1356,7 +1682,7 @@ elif st.session_state.step == 9:
                     grade                 = st.session_state.language_complexity,
                     tone                  = da.get("tone_recommendation", "formal"),
                     structure             = structure,
-                    stat_results          = stat_results,
+                    stat_results          = stat_results + ("\n\n" + _live_stats_text if _live_stats_text else ""),
                     objectives            = st.session_state.objectives,
                     hypotheses            = st.session_state.hypotheses,
                     cites_text            = cites_text,
@@ -1424,8 +1750,8 @@ elif st.session_state.step == 9:
 # STEP 10 — AUDIT
 # ══════════════════════════════════════════════════════════
 elif st.session_state.step == 10:
-    st.markdown("## Step 10 — Quality Audit")
-    st.markdown("Fireworks gpt-oss-20b → Groq Llama-70b → Haiku fallback. Claude does not audit its own output.")
+    st.markdown("## Step 10 — Quality Check")
+    st.markdown('<div class="ok-box">🔍 Running automated quality and integrity checks on your paper...</div>', unsafe_allow_html=True)
 
     if not st.session_state.audit_issues:
         with st.spinner("Running data integrity + neutrality audit..."):
@@ -1475,22 +1801,58 @@ elif st.session_state.step == 11:
     regen_cost = 16
     st.markdown(f"*First 2 regenerations free · After that: −{regen_cost} credits (₹{regen_cost*5}) each*")
 
+    # ── Chart preview above paper text ───────────────────────────────────
+    if EXTENSIONS_AVAILABLE and st.session_state.synthetic_df is not None:
+        _preview_figs = st.session_state.get("docx_figures", [])
+        if not _preview_figs and st.session_state.show_diagrams:
+            try:
+                from diagram_engine import generate_figures_for_paper
+                _preview_figs = generate_figures_for_paper(
+                    df=st.session_state.synthetic_df,
+                    stats_verification=st.session_state.get("stats_verification", {}),
+                    narrative=st.session_state.narratives.get(
+                        st.session_state.selected_narrative, {}),
+                    domain=st.session_state.domain_analysis.get(
+                        "detected_domain", "") if isinstance(
+                        st.session_state.domain_analysis, dict) else "",
+                )
+                st.session_state["docx_figures"] = _preview_figs
+            except Exception as _fe:
+                pass
+
+        if _preview_figs:
+            st.markdown("### 📊 Figures")
+            _fig_cols = st.columns(min(len(_preview_figs), 2))
+            for _fi, (_fbytes, _fcap) in enumerate(_preview_figs):
+                _fig_cols[_fi % 2].image(
+                    _fbytes,
+                    caption=f"Figure {_fi+1}. {_fcap}",
+                    use_container_width=True)
+
     with st.expander("📄 Full Paper Preview", expanded=True):
-        # Show clean preview — no markdown artifacts
         preview_text = st.session_state.full_paper
         if FORMATTER_AVAILABLE:
             preview_text = clean_markdown(preview_text)
-        # Render as clean text with section breaks
-        sections = preview_text.split("\n\n")
-        for sec in sections:
-            sec = sec.strip()
-            if not sec:
+        for _line in preview_text.split("\n"):
+            _line = _line.strip()
+            if not _line:
                 continue
-            # Detect headings
-            if len(sec.split()) <= 8 and not sec.endswith(".") and sec[0].isupper():
-                st.markdown(f"**{sec}**")
+            if _line.startswith("## "):
+                st.markdown(
+                    f'<div style="margin-top:1.2rem;font-size:16px;font-weight:700;'
+                    f'color:#3E2723;border-bottom:2px solid #8D6E63;padding-bottom:4px">'
+                    f'{_line.lstrip("# ").strip()}</div>',
+                    unsafe_allow_html=True)
+            elif _line.startswith("### "):
+                st.markdown(
+                    f'<div style="margin-top:0.8rem;font-size:14px;font-weight:600;color:#5D4037">'
+                    f'{_line.lstrip("# ").strip()}</div>',
+                    unsafe_allow_html=True)
             else:
-                st.write(sec)
+                st.markdown(
+                    f'<p style="font-size:13px;line-height:1.75;color:#212121;'
+                    f'text-align:justify;margin:0.15rem 0">{_line}</p>',
+                    unsafe_allow_html=True)
 
     st.markdown("### Regenerate a Section")
     section_names = [s.get("section","") for s in st.session_state.structure]

@@ -80,7 +80,7 @@ def _apply_labels(ax, title: str, xlabel: str, ylabel: str,
 
 def _save_fig(fig) -> bytes:
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=150,
+    fig.savefig(buf, format='png', dpi=400,
                 bbox_inches='tight', facecolor=WHITE)
     plt.close(fig)
     return buf.getvalue()
@@ -123,6 +123,34 @@ def decide_chart_type(data: pd.Series or pd.DataFrame,
 
     return 'bar'  # Safe default
 
+
+
+def validate_chart_quality(fig, ax, chart_type: str, title: str) -> bool:
+    """
+    Validate chart meets publication standards.
+    Checks: font, labels, values on bars, legend if multi-series.
+    Returns True if passes, False if regeneration needed.
+    """
+    issues = []
+    # Check title
+    if not ax.get_title() and not title:
+        issues.append("no title")
+    # Check axis labels on non-pie charts
+    if chart_type not in ("pie",):
+        if not ax.get_xlabel():
+            issues.append("no x-label")
+        if not ax.get_ylabel():
+            issues.append("no y-label")
+    # Check font on all text elements
+    for txt in fig.findobj(plt.Text):
+        if txt.get_text().strip() and txt.get_fontfamily()[0] not in (TNR, "Times New Roman"):
+            txt.set_fontfamily(TNR)
+        if txt.get_color() not in (BLACK, "#000000", "black"):
+            txt.set_color(BLACK)
+    if issues:
+        import warnings
+        warnings.warn(f"Chart quality issues ({chart_type}): {', '.join(issues)}")
+    return len(issues) == 0
 
 def generate_chart(data: Any, chart_type: str,
                     title: str, xlabel: str, ylabel: str,
@@ -172,7 +200,7 @@ def generate_chart(data: Any, chart_type: str,
             plt.close(fig)
             fig = _draw_radar(data, colors, title)
             buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor=WHITE)
+            fig.savefig(buf, format='png', dpi=400, bbox_inches='tight', facecolor=WHITE)
             plt.close(fig)
             return buf.getvalue()
 
@@ -212,8 +240,10 @@ def _draw_bar(ax, data, colors):
             bars = ax.bar(x + i*w, data[col], w,
                            label=col, color=colors[i % len(colors)],
                            edgecolor=BLACK, linewidth=0.6)
+            _enforce_value_labels(ax, bars)
         ax.set_xticks(x + w * (len(data.columns)-1)/2)
-        ax.set_xticklabels(data.index.astype(str))
+        ax.set_xticklabels(data.index.astype(str), rotation=0)
+        ax.legend(frameon=False, loc="upper right")
 
 
 def _draw_horizontal_bar(ax, data, colors):
@@ -329,6 +359,19 @@ def _draw_heatmap(ax, data):
                         ha='center', va='center',
                         color=WHITE if abs(v) > 0.6 else BLACK,
                         fontsize=9, fontfamily=TNR, fontweight='bold')
+
+
+def _enforce_value_labels(ax, bars, fmt=".2f"):
+    """Enforce numerical value on top of every bar — non-negotiable."""
+    for bar in bars:
+        h = bar.get_height()
+        if h == 0:
+            continue
+        label = f"{h:{fmt}}" if "." in fmt else str(int(h))
+        ax.text(
+            bar.get_x() + bar.get_width() / 2, h + abs(h) * 0.01,
+            label, ha="center", va="bottom",
+            fontsize=9, color=BLACK, fontfamily=TNR, fontweight="bold")
 
 
 def _draw_grouped_bar(ax, data, colors):

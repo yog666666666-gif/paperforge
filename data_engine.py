@@ -162,7 +162,9 @@ def _generate_correlated_items_targeting_alpha(n: int, k: int, target_alpha: flo
 
 def reverse_engineer_dataset(narrative: Dict, n_items_per_scale: int = 5,
                                seed: int = 42,
-                               constructs: List[Dict] = None) -> pd.DataFrame:
+                               constructs: List[Dict] = None,
+                               extra_demographics: List[Dict] = None,
+                               selected_demographics: List[str] = None) -> pd.DataFrame:
     """
     Generate a reverse-engineered dataset converging on target statistics.
 
