@@ -305,8 +305,18 @@ def think_sonnet(system: str, prompt: str, max_tokens: int = 2000) -> str:
     return call_writer("Medium", msgs, system, max_tokens, False, keys)
 
 def json_parse(text: str):
+    """Parse JSON with repair for truncated cheap-model responses."""
     clean = re.sub(r'```json|```', '', text).strip()
-    return json.loads(clean)
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        for i in range(len(clean), 0, -1):
+            if clean[i-1] in ('}', ']'):
+                try:
+                    return json.loads(clean[:i])
+                except Exception:
+                    continue
+        raise
 
 SHODHAK_SYSTEM = """You are Shodhak — a research intelligence engine for Indian researchers.
 You help researchers find gaps, plan studies, understand statistics, and screen patents.
@@ -962,7 +972,7 @@ Provide statistical test recommendations. Return ONLY valid JSON:
 }}"""
 
             try:
-                raw  = think(SHODHAK_SYSTEM, prompt, 1500)
+                raw  = think_sonnet(SHODHAK_SYSTEM, prompt, 2000)
                 data = json_parse(raw)
                 st.session_state.stat_plan = data
             except Exception as e:
@@ -1071,7 +1081,7 @@ Return ONLY valid JSON:
   "interpretation": "plain language explanation of what this means"
 }}"""
             try:
-                raw  = think(SHODHAK_SYSTEM, prompt, 800)
+                raw  = think_sonnet(SHODHAK_SYSTEM, prompt, 1000)
                 data = json_parse(raw)
                 # Display
                 c1,c2,c3 = st.columns(3)
@@ -1620,7 +1630,7 @@ Create a prior art landscape map. Return ONLY valid JSON:
   ]
 }}"""
             try:
-                raw  = think(SHODHAK_SYSTEM, prompt, 1200)
+                raw  = think_sonnet(SHODHAK_SYSTEM, prompt, 1500)
                 data = json_parse(raw)
                 for cluster in data.get("technology_clusters",[]):
                     with st.expander(

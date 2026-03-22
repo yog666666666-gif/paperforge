@@ -249,10 +249,25 @@ def format_citation(paper: Dict, style: str = "APA") -> str:
     authors = paper.get("authors", [])
     author_str = ""
     if authors:
-        names = authors[:3]
-        author_str = ", ".join(names)
+        clean = []
+        for a in authors[:3]:
+            if isinstance(a, dict):
+                name = (a.get("name") or a.get("authorName") or
+                        a.get("author_name") or "").strip()
+            else:
+                name = str(a).strip()
+            if not name:
+                continue
+            parts = name.split()
+            if len(parts) >= 2:
+                clean.append(f"{parts[-1]}, {parts[0][0]}.")
+            elif parts:
+                clean.append(parts[0])
+        author_str = ", ".join(clean)
         if len(authors) > 3:
-            author_str += ", et al."
+            author_str += " et al."
+    if not author_str:
+        author_str = "Author(s) unavailable"
     year = paper.get("year", "n.d.")
     if not year or str(year).strip() in ("0", "None", "", "null", "0.0"):
         year = "n.d."

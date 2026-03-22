@@ -28,11 +28,11 @@ TODAY       = date.today()
 TODAY_STR   = TODAY.strftime("%d %B %Y")
 
 # ── Constants ──────────────────────────────────────────────
-FETCH_TIMEOUT   = 8
+FETCH_TIMEOUT   = 4
 MAX_APIS        = 5
 FIRECRAWL_KEY   = os.environ.get("FIRECRAWL_API_KEY", "")
 CURRENT_YEAR = TODAY.year
-TIMEOUT     = 5   # seconds per API call
+TIMEOUT     = 4   # seconds per API call
 
 # ══════════════════════════════════════════════════════════════
 # API REGISTRY — 100 PUBLIC ENDPOINTS, NO KEY REQUIRED
@@ -1183,7 +1183,7 @@ def _fetch_firecrawl(api: Dict, topic: str, year_start: int, year_end: int) -> O
                 "onlyMainContent": True,
                 "timeout": 15000,
             },
-            timeout=20,
+            timeout=12,
         )
         if r.status_code == 200:
             data = r.json()
@@ -1263,38 +1263,57 @@ def fetch_domain_data(
 
     for api in apis_to_try:
         result.sources_tried.append(api["name"])
+        fetched = None
 
-        # Try structured fetch first
+        # Try structured JSON API first (fast, free)
         if api.get("method") != "scrape":
             fetched = _fetch_api(api, topic, year_start, effective_end)
-            if fetched:
-                result.data_points.extend(fetched.get("data_points", []))
-                result.sources_hit.append({
-                    "name":    api["name"],
-                    "url":     fetched.get("url", ""),
-                    "method":  "api",
-                    "points":  len(fetched.get("data_points", [])),
-                })
-                continue
 
-        # Firecrawl fallback for scrape-method or failed API
-        fetched = _fetch_firecrawl(api, topic, year_start, effective_end)
+        # Firecrawl fallback — fires when:
+        #   (a) method is "scrape", OR
+        #   (b) structured API returned nothing
+        # This ensures government portals always get scraped
+        if not fetched:
+            fetched = _fetch_firecrawl(api, topic, year_start, effective_end)
+
         if fetched:
-            result.data_points.extend(fetched.get("data_points", []))
+            points = fetched.get("data_points", [])
+            result.data_points.extend(points)
             result.sources_hit.append({
-                "name":    api["name"],
-                "url":     fetched.get("url", ""),
-                "method":  "firecrawl",
-                "points":  len(fetched.get("data_points", [])),
+                "name":   api["name"],
+                "url":    fetched.get("url", ""),
+                "method": fetched.get("method", "api"),
+                "points": len(points),
             })
 
-        time.sleep(0.2)  # polite rate limiting
+        time.sleep(0.15)
 
-    # Step 3: Result assessment
+    # Step 3: If still empty, try Firecrawl on Our World in Data
+    # as a last-resort general scrape for any domain
+    if not result.data_points and FIRECRAWL_KEY:
+        _last_resort = [
+            {"id": "owid_fallback", "name": "Our World in Data",
+             "base": f"https://ourworldindata.org/search?q={topic.replace(' ', '+')}",
+             "method": "scrape"},
+            {"id": "ogd_fallback", "name": "OGD India",
+             "base": "https://data.gov.in/search?title=" + topic.replace(' ', '+'),
+             "method": "scrape"},
+        ]
+        for api in _last_resort:
+            fetched = _fetch_firecrawl(api, topic, year_start, effective_end)
+            if fetched and fetched.get("data_points"):
+                result.data_points.extend(fetched["data_points"])
+                result.sources_hit.append({
+                    "name": api["name"], "url": api["base"],
+                    "method": "firecrawl_last_resort",
+                    "points": len(fetched["data_points"])})
+                break
+
+    # Step 4: Result assessment
     if result.data_points:
         result.success = True
     else:
-        # Total null — generate honest failure
+        # Honest null — credits protected
         result.success   = False
         result.null_reason = (
             f"No verified data found for '{topic}' in domain '{domain}' "
