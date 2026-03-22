@@ -6,7 +6,7 @@ Evolves: positive feedback → template gets higher weight.
 """
 
 import json, os, re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 BANK_FILE = "prompt_bank_state.json"
 
