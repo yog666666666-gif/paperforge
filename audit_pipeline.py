@@ -9,7 +9,7 @@ Post-process: blocklist guard (no "simulation", em-dashes, etc.)
 
 import re, json
 from typing import Dict, List, Tuple, Callable, Optional
-from model_router import call_audit_model
+from model_router import call_audit
 
 # ── Blocklist (from BookWriter V11) ────────────────────────
 BLOCKLIST = [
