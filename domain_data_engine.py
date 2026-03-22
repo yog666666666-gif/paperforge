@@ -1085,7 +1085,9 @@ def _fetch_api(api: Dict, topic: str, year_start: int, year_end: int) -> Optiona
         if not api_key:
             return None  # key not configured, skip silently
 
-    base = api["base"]
+    base = api.get("base", "")
+    if not base:
+        return None
     params = dict(api.get("params", {}))
 
     try:

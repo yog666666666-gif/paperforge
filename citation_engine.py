@@ -253,9 +253,39 @@ def format_citation(paper: Dict, style: str = "APA") -> str:
         author_str = ", ".join(names)
         if len(authors) > 3:
             author_str += ", et al."
-    year  = paper.get("year", "n.d.")
-    title = paper.get("title", "Unknown title")
-    venue = paper.get("venue", "")
+    year = paper.get("year", "n.d.")
+    if not year or str(year).strip() in ("0", "None", "", "null", "0.0"):
+        year = "n.d."
+    else:
+        try:
+            yr = int(float(str(year)))
+            year = str(yr) if 1800 <= yr <= 2030 else "n.d."
+        except (ValueError, TypeError):
+            year = "n.d."
+    # Guard: year=0, None, empty string → "n.d."
+    if not year or str(year).strip() in ("0", "None", "", "null"):
+        year = "n.d."
+    else:
+        try:
+            yr = int(year)
+            year = str(yr) if 1800 <= yr <= 2030 else "n.d."
+        except (ValueError, TypeError):
+            year = "n.d."
+    title = paper.get("title", "") or paper.get("title", "Untitled")
+    if not title:
+        title = "Untitled"
+    # Kill duplicate title pattern: "Carbon emissions. Carbon emissions"
+    if title and ". " in title:
+        parts = title.split(". ", 1)
+        if parts[0].strip().lower() == parts[1].strip().lower():
+            title = parts[0].strip()
+    # Guard: duplicate title (API sometimes returns title as full citation string)
+    if title and len(title) > 10:
+        # Strip duplicate: "X. X" pattern
+        half = len(title) // 2
+        if title[:half].strip().rstrip('.') == title[half:].strip().lstrip('. '):
+            title = title[:half].strip().rstrip('.')
+    venue = paper.get("venue", "") or paper.get("journal", "") or ""
     doi   = paper.get("doi", "")
     doi_str = f" https://doi.org/{doi}" if doi else ""
 
