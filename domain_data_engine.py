@@ -25,6 +25,11 @@ import time
 
 TODAY       = date.today()
 TODAY_STR   = TODAY.strftime("%d %B %Y")
+
+# ── Constants ──────────────────────────────────────────────
+FETCH_TIMEOUT   = 8
+MAX_APIS        = 5
+FIRECRAWL_KEY   = os.environ.get("FIRECRAWL_API_KEY", "")
 CURRENT_YEAR = TODAY.year
 TIMEOUT     = 5   # seconds per API call
 
@@ -992,7 +997,7 @@ def validate_year_range(requested_start: int, requested_end: int,
 
 def route_apis_for_domain(topic: str, domain: str,
                             paper_type: str = "Research Paper",
-                            max_apis: int = MAX_APIS,
+                            max_apis: int = 5,
                             call_sonnet_fn=None) -> List[Dict]:
     """
     Use Sonnet (via call_sonnet_fn) to select the most relevant APIs
