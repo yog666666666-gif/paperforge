@@ -16,6 +16,7 @@ Architecture:
 Firebase scraping is the last-resort fallback only.
 """
 
+import os
 import requests
 import json
 import re
