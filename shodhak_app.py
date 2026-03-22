@@ -43,6 +43,14 @@ except ImportError:
     AUTH_AVAILABLE = False
 
 try:
+    from coupon_engine import (render_coupon_gate, get_tier_config,
+                                mark_coupon_used, TIER_VISIBILITY,
+                                MAX_REGENS)
+    COUPON_ENGINE = True
+except ImportError:
+    COUPON_ENGINE = False
+
+try:
     from diagram_engine     import generate_chart, decide_chart_type
     DIAGRAMS_AVAILABLE = True
 except ImportError:
@@ -257,18 +265,21 @@ hr { border-color: #E8E0D4; }
 # SESSION STATE
 # ══════════════════════════════════════════════════════════
 DEFAULTS = {
-    "module":           "home",
-    "topic":            "",
-    "domain":           "",
-    "citation_bank":    [],
-    "hypotheses":       [],
-    "gaps":             [],
-    "framework_data":   {},
-    "proposal":         {},
-    "patent_results":   {},
-    "stat_plan":        {},
-    "real_data":        {},
-    "tier":             "individual",
+    "module":            "home",
+    "topic":             "",
+    "domain":            "",
+    "citation_bank":     [],
+    "hypotheses":        [],
+    "gaps":              [],
+    "framework_data":    {},
+    "proposal":          {},
+    "patent_results":    {},
+    "stat_plan":         {},
+    "real_data":         {},
+    "tier":              "Basic",
+    "coupon_validated":  False,
+    "coupon_data":       {},
+    "tier_config":       {},
 }
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
@@ -336,6 +347,17 @@ with st.sidebar:
 
     if AUTH_AVAILABLE:
         render_user_badge()
+    elif st.session_state.get("coupon_validated"):
+        _t = st.session_state.get("tier","Basic")
+        _colors = {"Basic":"#8D6E63","Medium":"#1565C0","Advanced":"#6A1B9A"}
+        st.markdown(
+            f'<div style="background:#fff;border:1px solid #E8E0D4;'
+            f'border-radius:8px;padding:8px 12px;margin-bottom:8px;'
+            f'font-size:13px;text-align:center">'
+            f'<span style="color:{_colors.get(_t,"#333")};font-weight:600">'
+            f'{_t} Plan</span> &nbsp;·&nbsp; '
+            f'<span style="color:#8D6E63">2 section regens</span></div>',
+            unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("**Research Planning**")
@@ -359,7 +381,10 @@ with st.sidebar:
          "Turn reviewer comments into actions"),
     ]
 
-    st.markdown("**Patent Intelligence**")
+    _show_patent = st.session_state.get(
+        "tier_config",{}).get("patent_engine", False)
+    if _show_patent:
+        st.markdown("**Patent Intelligence**")
     PATENT_MODULES = [
         ("patent_screen", "⚖️", "Patent Novelty Screener",
          "IPO, USPTO, Google Patents"),
@@ -367,7 +392,7 @@ with st.sidebar:
          "India filing guidance"),
         ("prior_art",     "🗂️", "Prior Art Map",
          "What exists, what's patentable"),
-    ]
+    ] if _show_patent else []
 
     for mod_id, icon, title, desc in MODULES + PATENT_MODULES:
         is_active = st.session_state.module == mod_id
@@ -398,11 +423,19 @@ with st.sidebar:
                 st.rerun()
 
 # ══════════════════════════════════════════════════════════
-# AUTH GATE
+# COUPON GATE — one coupon, one use, no credits
 # ══════════════════════════════════════════════════════════
-if AUTH_AVAILABLE and not st.session_state.get("authenticated"):
-    render_auth_screen()
+if COUPON_ENGINE and not st.session_state.get("coupon_validated"):
+    render_coupon_gate()
     st.stop()
+
+# Set tier config from coupon
+if not st.session_state.get("tier_config") and COUPON_ENGINE:
+    tier = st.session_state.get("tier","Basic")
+    st.session_state["tier_config"] = get_tier_config(tier)
+
+_tc = st.session_state.get("tier_config", {})
+_tier = st.session_state.get("tier","Basic")
 
 # ══════════════════════════════════════════════════════════
 # SHARED TOPIC INPUT (shown on all modules)
